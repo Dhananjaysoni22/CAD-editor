@@ -229,17 +229,14 @@ function SafeZoneSegments() {
     const len = Math.hypot(dx, dz);
     let nx = 0, nz = 0;
     if (len > 0) {
-      nx = -dz / len;
-      nz = dx / len;
+      nx = dz / len;
+      nz = -dx / len;
     }
     
     const isSelected = selectedEdges.includes(i);
     const offsetDist = offsets[i] || 1500;
     
-    const labelX = midX + nx * (offsetDist + 500);
-    const labelZ = midZ + nz * (offsetDist + 500);
-    
-    const showLabel = len > 300 || isSelected;
+    const showLabel = isSelected;
 
     segments.push(
       <group key={`edge-${i}`}>
@@ -261,23 +258,42 @@ function SafeZoneSegments() {
         />
         
         {showLabel && (
-          <Html position={[labelX, 0, labelZ]} center zIndexRange={[100, 0]}>
-            <div 
-              style={{
-                background: isSelected ? '#fbbf24' : 'rgba(0,0,0,0.7)',
-                color: isSelected ? '#000' : '#fff',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-                border: isSelected ? 'none' : '1px solid rgba(255,255,255,0.2)'
-              }}
-            >
-              {offsetDist} mm
-            </div>
-          </Html>
+          <>
+            <line>
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  count={2}
+                  array={new Float32Array([midX, 5, midZ, midX + nx * offsetDist, 5, midZ + nz * offsetDist])}
+                  itemSize={3}
+                />
+              </bufferGeometry>
+              <lineBasicMaterial color="rgba(255, 255, 255, 0.5)" linewidth={1} />
+            </line>
+            
+            <mesh position={[midX + nx * offsetDist, 5, midZ + nz * offsetDist]}>
+              <circleGeometry args={[20, 16]} />
+              <meshBasicMaterial color="#ffffff" />
+            </mesh>
+
+            <Html position={[midX + nx * (offsetDist + 400), 0, midZ + nz * (offsetDist + 400)]} center zIndexRange={[100, 0]}>
+              <div 
+                style={{
+                  background: isSelected ? '#fbbf24' : 'rgba(0,0,0,0.7)',
+                  color: isSelected ? '#000' : '#fff',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  border: isSelected ? 'none' : '1px solid rgba(255,255,255,0.2)'
+                }}
+              >
+                {offsetDist} mm
+              </div>
+            </Html>
+          </>
         )}
       </group>
     );
