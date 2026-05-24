@@ -83,7 +83,16 @@ function Model({ url }) {
 function PolygonLine({ points, color, lineWidth, dashed }) {
   const points3D = useMemo(() => {
     if (!points || points.length === 0) return [];
-    return points.map(p => [p[0], 0, p[1]]);
+    const pts = points.map(p => [p[0], 0, p[1]]);
+    
+    // Ensure the polygon line is visually closed
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (first[0] !== last[0] || first[2] !== last[2]) {
+      pts.push([...first]);
+    }
+    
+    return pts;
   }, [points]);
 
   if (points3D.length === 0) return null;
