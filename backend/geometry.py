@@ -66,73 +66,85 @@ def apply_variable_offset(base_polygon: Polygon, edge_offsets: List[float]) -> P
                   
     Returns: A new Polygon representing the offset boundary.
     """
+    import shapely
     coords = list(base_polygon.exterior.coords)
-    # The last coordinate is same as the first in a closed polygon
     if coords[0] == coords[-1]:
         coords = coords[:-1]
         
     n = len(coords)
     if len(edge_offsets) != n:
-        # Fallback if mismatch
-        edge_offsets = [1500] * n
+        edge_offsets = [1500.0] * n
         
-    # Create offset lines for each segment
+    is_ccw = shapely.is_ccw(base_polygon.exterior)
+    
     offset_lines = []
     for i in range(n):
         p1 = np.array(coords[i])
         p2 = np.array(coords[(i + 1) % n])
         
-        # Calculate normal vector (pointing outwards)
-        # Assumes polygon is CCW. If CW, normal direction flips.
-        # Let's ensure base_polygon is CCW
-        
         dx = p2[0] - p1[0]
         dy = p2[1] - p1[1]
         length = math.hypot(dx, dy)
         if length == 0:
-            nx, ny = 0, 0
+            offset_lines.append((p1, p2))
+            continue
+            
+        if is_ccw:
+            nx = dy / length
+            ny = -dx / length
         else:
             nx = -dy / length
             ny = dx / length
             
-        offset_dist = edge_offsets[i]
-        
-        # New points
-        new_p1 = p1 + np.array([nx, ny]) * offset_dist
-        new_p2 = p2 + np.array([nx, ny]) * offset_dist
+        dist = edge_offsets[i]
+        new_p1 = p1 + np.array([nx, ny]) * dist
+        new_p2 = p2 + np.array([nx, ny]) * dist
         
         offset_lines.append((new_p1, new_p2))
         
-    # Now intersect adjacent offset lines to find new vertices
+    def get_intersection(p1, p2, p3, p4):
+        x1, y1 = p1[0], p1[1]
+        x2, y2 = p2[0], p2[1]
+        x3, y3 = p3[0], p3[1]
+        x4, y4 = p4[0], p4[1]
+        den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(den) < 1e-8:
+            return None
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
     new_vertices = []
-    
-    # We will also create a buffered version of the base polygon to ensure smooth corners
-    # The true variable offset is the union of offset lines and corner arcs, but for simplicity
-    # we can construct it by unioning the buffered edges!
-    
-    buffered_edges = []
     for i in range(n):
-        p1 = coords[i]
-        p2 = coords[(i + 1) % n]
-        line = LineString([p1, p2])
-        # Buffer this segment with a round join style for smooth corners
-        # Single sided buffer is better but Shapely's single_sided buffer is sometimes tricky.
-        # Standard buffer creates a capsule.
-        capsule = line.buffer(edge_offsets[i], join_style=1, cap_style=1)
-        buffered_edges.append(capsule)
+        l1 = offset_lines[i - 1]
+        l2 = offset_lines[i]
+        orig_v = coords[i]
         
-    # The union of all these capsules plus the original polygon forms the safe zone!
-    # This automatically handles smooth corner transitions (fillets) because of the round caps.
-    # And it correctly handles variable offsets.
+        intersect = get_intersection(l1[0], l1[1], l2[0], l2[1])
+        if intersect:
+            dist = math.hypot(intersect[0] - orig_v[0], intersect[1] - orig_v[1])
+            miter_limit = 3.0
+            if dist > max(edge_offsets[i-1], edge_offsets[i]) * miter_limit:
+                # Spike detected! Bevel it.
+                new_vertices.append(l1[1])
+                new_vertices.append(l2[0])
+            else:
+                new_vertices.append(intersect)
+        else:
+            # Parallel lines, bridge the gap
+            new_vertices.append(l1[1])
+            new_vertices.append(l2[0])
+            
+    miter_poly = Polygon(new_vertices)
+    if not miter_poly.is_valid:
+        miter_poly = miter_poly.buffer(0)
+        
+    # Apply a smoothing fillet to outer corners
+    # A standard safety zone is filleted with a small radius for a natural CAD-like look
+    smoothed_poly = miter_poly.buffer(-500).buffer(500, join_style=1)
     
-    union_poly = unary_union([base_polygon] + buffered_edges)
+    smoothed_poly = smoothed_poly.simplify(10)
     
-    # Simplify slightly to clean up collinear points and tiny segments
-    union_poly = union_poly.simplify(10)
-    
-    # Ensure it's a single polygon
-    if isinstance(union_poly, MultiPolygon):
-         union_poly = max(union_poly.geoms, key=lambda a: a.area)
+    if smoothed_poly.geom_type == 'MultiPolygon':
+        smoothed_poly = max(smoothed_poly.geoms, key=lambda a: a.area)
          
-    # To return it as a list of points (and later edges), we just get the exterior coords
-    return union_poly
+    return smoothed_poly

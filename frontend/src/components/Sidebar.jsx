@@ -16,6 +16,7 @@ export default function Sidebar() {
   const selectedEdges = useStore(state => state.selectedEdges);
   const isLoading = useStore(state => state.isLoading);
   const setIsLoading = useStore(state => state.setIsLoading);
+  const isMeshMode = useStore(state => state.isMeshMode);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -143,7 +144,30 @@ export default function Sidebar() {
       {footprint.length > 0 && (
         <div className="panel-section" style={{ marginTop: 'auto' }}>
           <h2>Export Data</h2>
-          <button className="action-btn" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} onClick={handleDownload}>
+          <button 
+            className="action-btn" 
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }} 
+            onClick={() => useStore.getState().toggleMeshMode()}
+          >
+            {isMeshMode ? "Revert to Line" : "Convert to Mesh"}
+          </button>
+          
+          <button 
+            className="action-btn primary" 
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }} 
+            onClick={() => {
+               const exportFn = useStore.getState().exportModel;
+               if (exportFn) exportFn();
+            }}
+          >
+            <Download size={18} /> Export 3D GLB
+          </button>
+
+          <button 
+            className="action-btn" 
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} 
+            onClick={handleDownload}
+          >
             <Download size={18} /> Download JSON
           </button>
         </div>

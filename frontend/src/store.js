@@ -9,23 +9,31 @@ export const useStore = create((set) => ({
   safeZone: [],  // array of [x, y]
   
   isLoading: false,
+  isMeshMode: false,
+  exportModel: null,
+  
   setIsLoading: (loading) => set({ isLoading: loading }),
   
   setSimulationData: (data) => set({
     footprint: data.footprint,
     offsets: data.offsets,
-    safeZone: data.safeZone
+    safeZone: data.safeZone,
+    isMeshMode: false
   }),
   
-  updateSafeZone: (safeZone) => set({ safeZone }),
+  updateSafeZone: (newZone) => set({ safeZone: newZone }),
   
-  updateOffset: (indices, newOffset) => set((state) => {
+  updateOffset: (indices, value) => set((state) => {
     const newOffsets = [...state.offsets];
-    indices.forEach(index => {
-      newOffsets[index] = newOffset;
+    indices.forEach(i => {
+      newOffsets[i] = value;
     });
     return { offsets: newOffsets };
   }),
+  
+  toggleMeshMode: () => set(state => ({ isMeshMode: !state.isMeshMode })),
+  
+  setExportModel: (fn) => set({ exportModel: fn }),
   
   selectedEdges: [],
   setSelectedEdges: (indices) => set({ selectedEdges: indices }),

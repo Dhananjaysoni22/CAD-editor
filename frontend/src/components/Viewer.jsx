@@ -2,6 +2,7 @@ import React, { Suspense, useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useGLTF, OrthographicCamera, MapControls, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
 import { useStore } from '../store';
 
 import axios from 'axios';
@@ -109,6 +110,58 @@ function PolygonLine({ points, color, lineWidth, dashed }) {
   );
 }
 
+function SafeZoneMesh({ points }) {
+  const shape = useMemo(() => {
+    if (!points || points.length === 0) return null;
+    const s = new THREE.Shape();
+    // THREE.Shape operates in X,Y coordinates. We will rotate the mesh to lay it flat in X,Z.
+    s.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) {
+      s.lineTo(points[i][0], points[i][1]);
+    }
+    return s;
+  }, [points]);
+
+  if (!shape) return null;
+
+  return (
+    <mesh position={[0, -5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      <shapeGeometry args={[shape]} />
+      <meshBasicMaterial color="#3b82f6" transparent opacity={0.3} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+function ExporterHook({ exportGroupRef }) {
+  const setExportModel = useStore(state => state.setExportModel);
+  
+  useEffect(() => {
+    setExportModel(() => {
+      if (!exportGroupRef.current) return;
+      const exporter = new GLTFExporter();
+      exporter.parse(
+        exportGroupRef.current,
+        (gltf) => {
+          const blob = new Blob([gltf], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'park-model-with-safezone.glb';
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        (err) => {
+          console.error("Export failed:", err);
+          alert("Export failed!");
+        },
+        { binary: true }
+      );
+    });
+  }, [exportGroupRef, setExportModel]);
+  
+  return null;
+}
+
 function SelectionLogic({ setBoxUi }) {
   const { camera, gl } = useThree();
   const footprint = useStore(state => state.footprint);
@@ -213,6 +266,7 @@ function SafeZoneSegments() {
   const offsets = useStore(state => state.offsets);
   const selectedEdges = useStore(state => state.selectedEdges);
   const toggleEdgeSelection = useStore(state => state.toggleEdgeSelection);
+  const isMeshMode = useStore(state => state.isMeshMode);
 
   if (!safeZone || safeZone.length === 0 || !footprint || footprint.length === 0) return null;
 
@@ -301,7 +355,11 @@ function SafeZoneSegments() {
 
   return (
     <group>
-      <PolygonLine points={safeZone} color="#3b82f6" lineWidth={4} />
+      {isMeshMode ? (
+        <SafeZoneMesh points={safeZone} />
+      ) : (
+        <PolygonLine points={safeZone} color="#3b82f6" lineWidth={4} />
+      )}
       {segments}
     </group>
   );
@@ -310,6 +368,7 @@ function SafeZoneSegments() {
 export default function Viewer() {
   const modelUrl = useStore(state => state.modelUrl);
   const [boxUi, setBoxUi] = useState(null);
+  const exportGroupRef = useRef();
 
   return (
     <div className="canvas-container" onPointerDown={(e) => {
@@ -341,11 +400,18 @@ export default function Viewer() {
         <ambientLight intensity={0.5} />
         <directionalLight position={[1000, 1000, 500]} intensity={1} />
         
-        {modelUrl && (
-          <Suspense fallback={null}>
-            <Model url={modelUrl} />
-          </Suspense>
-        )}
+        <ExporterHook exportGroupRef={exportGroupRef} />
+
+        <group ref={exportGroupRef}>
+          {modelUrl && (
+            <Suspense fallback={null}>
+              <Model url={modelUrl} />
+            </Suspense>
+          )}
+          {useStore.getState().isMeshMode && useStore.getState().safeZone.length > 0 && (
+            <SafeZoneMesh points={useStore.getState().safeZone} />
+          )}
+        </group>
 
         <SelectionLogic setBoxUi={setBoxUi} />
         <SafeZoneSegments />
