@@ -40,7 +40,7 @@ async def generate_safezone(req: PointsRequest):
         if footprint_poly.is_empty or footprint_poly.geom_type not in ['Polygon', 'MultiPolygon']:
              footprint_poly = mp.convex_hull
              
-        footprint_poly = footprint_poly.buffer(300, join_style=2).buffer(-300, join_style=2).buffer(50).simplify(250)
+        footprint_poly = footprint_poly.buffer(300, join_style=2).buffer(-300, join_style=2).buffer(100, join_style=2).simplify(50)
         
         if footprint_poly.geom_type == 'MultiPolygon':
             footprint_poly = max(footprint_poly.geoms, key=lambda a: a.area)
