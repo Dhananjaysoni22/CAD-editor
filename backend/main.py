@@ -23,24 +23,28 @@ class OffsetRequest(BaseModel):
     offsets: List[float]
 
 class PointsRequest(BaseModel):
-    points: List[Tuple[float, float]]
+    mesh_groups: List[List[Tuple[float, float]]]
 
 @app.post("/generate-safezone")
 async def generate_safezone(req: PointsRequest):
     try:
         import shapely
+        import shapely.ops
         from shapely.geometry import MultiPoint
         
-        if not req.points:
+        if not req.mesh_groups:
             return {"error": "No points received."}
             
-        mp = MultiPoint(req.points)
-        footprint_poly = shapely.concave_hull(mp, ratio=0.1)
+        mesh_polys = []
+        for group in req.mesh_groups:
+            if not group: continue
+            mp = MultiPoint(group)
+            poly = mp.convex_hull.buffer(10, join_style=2)
+            mesh_polys.append(poly)
+            
+        footprint_poly = shapely.ops.unary_union(mesh_polys)
         
-        if footprint_poly.is_empty or footprint_poly.geom_type not in ['Polygon', 'MultiPolygon']:
-             footprint_poly = mp.convex_hull
-             
-        footprint_poly = footprint_poly.buffer(300, join_style=2).buffer(-300, join_style=2).buffer(100, join_style=2).simplify(50)
+        footprint_poly = footprint_poly.buffer(500, join_style=1).buffer(-500, join_style=1).buffer(100, join_style=2).simplify(50)
         
         if footprint_poly.geom_type == 'MultiPolygon':
             footprint_poly = max(footprint_poly.geoms, key=lambda a: a.area)

@@ -20,10 +20,13 @@ function Model({ url }) {
       
       scene.updateMatrixWorld(true);
       
+      const meshGroups = [];
       scene.traverse((child) => {
         if (child.isMesh) {
           const pos = child.geometry.attributes.position;
           if (!pos) return;
+          
+          const points = new Set();
           
           if (child.isInstancedMesh) {
             for (let inst = 0; inst < child.count; inst++) {
@@ -47,17 +50,20 @@ function Model({ url }) {
                  points.add(`${x},${z}`);
              }
           }
+          
+          if (points.size > 0) {
+            const groupPayload = Array.from(points).map(p => {
+              const [x, z] = p.split(',');
+              return [parseFloat(x), parseFloat(z)];
+            });
+            meshGroups.push(groupPayload);
+          }
         }
       });
       
-      const payload = Array.from(points).map(p => {
-        const [x, z] = p.split(',');
-        return [parseFloat(x), parseFloat(z)];
-      });
-      
       const setIsLoading = useStore.getState().setIsLoading;
-      if (payload.length > 0) {
-          axios.post('http://localhost:8000/generate-safezone', { points: payload })
+      if (meshGroups.length > 0) {
+          axios.post('http://localhost:8000/generate-safezone', { mesh_groups: meshGroups })
             .then(res => {
               if (res.data.error) {
                   alert("Backend Error: " + res.data.error);
