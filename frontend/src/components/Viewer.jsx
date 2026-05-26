@@ -7,7 +7,7 @@ import { useStore } from '../store';
 
 import axios from 'axios';
 
-function Model({ url }) {
+function Model({ url, onLoadMinY }) {
   const { scene } = useGLTF(url);
   const setSimulationData = useStore(state => state.setSimulationData);
 
@@ -21,6 +21,8 @@ function Model({ url }) {
       scene.updateMatrixWorld(true);
       
       const meshGroups = [];
+      let globalMinY = Infinity;
+      
       scene.traverse((child) => {
         if (child.isMesh) {
           const pos = child.geometry.attributes.position;
@@ -28,27 +30,24 @@ function Model({ url }) {
           
           const points = new Set();
           
-          if (child.isInstancedMesh) {
-            for (let inst = 0; inst < child.count; inst++) {
-               child.getMatrixAt(inst, matrix);
-               matrix.premultiply(child.matrixWorld);
-               for (let i = 0; i < pos.count; i++) {
-                 vec.fromBufferAttribute(pos, i);
-                 vec.applyMatrix4(matrix);
-                 const x = Math.round(vec.x / grid) * grid;
-                 const z = Math.round(vec.z / grid) * grid;
-                 points.add(`${x},${z}`);
-               }
-            }
-          } else {
-             const m = child.matrixWorld;
+          const extractPoints = (m) => {
              for (let i = 0; i < pos.count; i++) {
-                 vec.fromBufferAttribute(pos, i);
-                 vec.applyMatrix4(m);
+                 vec.fromBufferAttribute(pos, i).applyMatrix4(m);
+                 if (vec.y < globalMinY) globalMinY = vec.y;
                  const x = Math.round(vec.x / grid) * grid;
                  const z = Math.round(vec.z / grid) * grid;
                  points.add(`${x},${z}`);
              }
+          };
+          
+          if (child.isInstancedMesh) {
+            for (let inst = 0; inst < child.count; inst++) {
+               child.getMatrixAt(inst, matrix);
+               matrix.premultiply(child.matrixWorld);
+               extractPoints(matrix);
+            }
+          } else {
+             extractPoints(child.matrixWorld);
           }
           
           if (points.size > 0) {
@@ -60,6 +59,10 @@ function Model({ url }) {
           }
         }
       });
+      
+      if (onLoadMinY && globalMinY !== Infinity) {
+          onLoadMinY(globalMinY);
+      }
       
       const setIsLoading = useStore.getState().setIsLoading;
       if (meshGroups.length > 0) {
@@ -116,7 +119,7 @@ function PolygonLine({ points, color, lineWidth, dashed }) {
   );
 }
 
-function SafeZoneMesh({ points }) {
+function SafeZoneMesh({ points, yOffset = 0 }) {
   const shape = useMemo(() => {
     if (!points || points.length === 0) return null;
     const s = new THREE.Shape();
@@ -131,7 +134,7 @@ function SafeZoneMesh({ points }) {
   if (!shape) return null;
 
   return (
-    <mesh position={[0, -5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+    <mesh position={[0, yOffset, 0]} rotation={[Math.PI / 2, 0, 0]}>
       <shapeGeometry args={[shape]} />
       <meshBasicMaterial color="#3b82f6" transparent opacity={0.3} side={THREE.DoubleSide} />
     </mesh>
@@ -373,7 +376,10 @@ function SafeZoneSegments() {
 
 export default function Viewer() {
   const modelUrl = useStore(state => state.modelUrl);
+  const safeZone = useStore(state => state.safeZone);
+  const isMeshMode = useStore(state => state.isMeshMode);
   const [boxUi, setBoxUi] = useState(null);
+  const [modelMinY, setModelMinY] = useState(0);
   const exportGroupRef = useRef();
 
   return (
@@ -411,11 +417,11 @@ export default function Viewer() {
         <group ref={exportGroupRef}>
           {modelUrl && (
             <Suspense fallback={null}>
-              <Model url={modelUrl} />
+              <Model url={modelUrl} onLoadMinY={(min) => setModelMinY(min)} />
             </Suspense>
           )}
-          {useStore.getState().isMeshMode && useStore.getState().safeZone.length > 0 && (
-            <SafeZoneMesh points={useStore.getState().safeZone} />
+          {isMeshMode && safeZone.length > 0 && (
+            <SafeZoneMesh points={safeZone} yOffset={modelMinY - 5} />
           )}
         </group>
 
